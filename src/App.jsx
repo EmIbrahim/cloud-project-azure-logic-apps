@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Upload from './pages/Upload';
 import Dashboard from './pages/Dashboard';
+import EmployeeDashboard from './pages/EmployeeDashboard';
 import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Header from './components/Layout/Header';
@@ -29,6 +30,14 @@ const App = () => {
               }
             />
             <Route
+              path="/my-dashboard"
+              element={
+                <ProtectedRoute roles={['employee']}>
+                  <EmployeeDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/dashboard"
               element={
                 <ProtectedRoute roles={['cfo']}>
@@ -40,7 +49,7 @@ const App = () => {
               path="/"
               element={
                 user ? (
-                  <Navigate to={user.role === 'cfo' ? '/dashboard' : '/upload'} replace />
+                  <Navigate to={user.role === 'cfo' ? '/dashboard' : '/my-dashboard'} replace />
                 ) : (
                   <Navigate to="/login" replace />
                 )

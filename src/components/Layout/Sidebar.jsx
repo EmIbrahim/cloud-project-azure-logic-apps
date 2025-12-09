@@ -7,8 +7,13 @@ const Sidebar = () => {
 
   return (
     <aside className="sidebar">
-      {user.role === 'employee' && <NavLink to="/upload">Upload</NavLink>}
-      {user.role === 'cfo' && <NavLink to="/dashboard">Dashboard</NavLink>}
+      {user.role === 'employee' && (
+        <>
+          <NavLink to="/my-dashboard">My Dashboard</NavLink>
+          <NavLink to="/upload">Upload Receipt</NavLink>
+        </>
+      )}
+      {user.role === 'cfo' && <NavLink to="/dashboard">CFO Dashboard</NavLink>}
     </aside>
   );
 };

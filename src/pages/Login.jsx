@@ -13,7 +13,7 @@ const Login = () => {
 
   useEffect(() => {
     if (user) {
-      navigate(user.role === 'cfo' ? '/dashboard' : '/upload', { replace: true });
+      navigate(user.role === 'cfo' ? '/dashboard' : '/my-dashboard', { replace: true });
     }
   }, [user, navigate]);
 
@@ -32,7 +32,7 @@ const Login = () => {
     try {
       const authenticated = await login(form.username, form.password);
       const next =
-        location.state?.from?.pathname || (authenticated.role === 'cfo' ? '/dashboard' : '/upload');
+        location.state?.from?.pathname || (authenticated.role === 'cfo' ? '/dashboard' : '/my-dashboard');
       navigate(next, { replace: true });
     } catch (err) {
       // Error is surfaced by context error state
@@ -44,9 +44,6 @@ const Login = () => {
   return (
     <div className="form">
       <h2>Login</h2>
-      <p style={{ marginTop: -8, color: '#475569' }}>
-        Mock users: cfo@acme.com / password123, employee@acme.com / password123
-      </p>
       <ErrorBanner message={formError || error} />
       <form onSubmit={handleSubmit}>
         <div className="field">

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://github.com/Azure/data-api-builder/releases/download/v0.5.0/dab.draft.schema.json",
+  "data-source": {
+    "database-type": "mssql",
+    "connection-string": "@env('DATABASE_CONNECTION_STRING')"
+  },
+  "entities": {
+    "Receipt": {
+      "source": "dbo.Receipts",
+      "permissions": [
+        {
+          "role": "anonymous",
+          "actions": ["read"]
+        },
+        {
+          "role": "authenticated",
+          "actions": ["create", "read", "update", "delete"]
+        }
+      ]
+    },
+    "Users": {
+      "source": "dbo.Users",
+      "permissions": [
+        {
+          "role": "anonymous",
+          "actions": ["read"]
+        }
+      ]
+    }
+  }
+}
+
