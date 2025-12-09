@@ -13,7 +13,11 @@ const Login = () => {
 
   useEffect(() => {
     if (user) {
-      navigate(user.role === 'cfo' ? '/dashboard' : '/my-dashboard', { replace: true });
+      const role = user.role?.toLowerCase()?.trim();
+      console.log('Login redirect - User role:', role);
+      const redirectPath = role === 'cfo' ? '/dashboard' : '/my-dashboard';
+      console.log('Redirecting to:', redirectPath);
+      navigate(redirectPath, { replace: true });
     }
   }, [user, navigate]);
 
@@ -31,8 +35,11 @@ const Login = () => {
     setSubmitting(true);
     try {
       const authenticated = await login(form.username, form.password);
-      const next =
-        location.state?.from?.pathname || (authenticated.role === 'cfo' ? '/dashboard' : '/my-dashboard');
+      const role = authenticated.role?.toLowerCase()?.trim();
+      console.log('Login successful - User role:', role);
+      const defaultPath = role === 'cfo' ? '/dashboard' : '/my-dashboard';
+      const next = location.state?.from?.pathname || defaultPath;
+      console.log('Navigating to:', next);
       navigate(next, { replace: true });
     } catch (err) {
       // Error is surfaced by context error state
@@ -47,12 +54,12 @@ const Login = () => {
       <ErrorBanner message={formError || error} />
       <form onSubmit={handleSubmit}>
         <div className="field">
-          <label htmlFor="username">Email</label>
+          <label htmlFor="username">Username</label>
           <input
             id="username"
             name="username"
-            type="email"
-            placeholder="you@company.com"
+            type="text"
+            placeholder="Enter your username"
             value={form.username}
             onChange={handleChange}
             autoComplete="username"

@@ -1,0 +1,21 @@
+Add these to your .env file:
+
+# Azure SQL Database Connection (for local development)
+SQL_SERVER=receipts-sql-server.database.windows.net
+SQL_DATABASE=ReceiptsDB
+SQL_USER=your-sql-username
+SQL_PASSWORD=your-sql-password
+
+# Existing variables (if not already set)
+VITE_SAS_TOKEN="?sv=..."
+VITE_LOGIC_APP_TRIGGER_URL="https://your-logic-app-url/..."
+
+# Optional
+VITE_AUTH_PROXY_URL=http://localhost:3001
+
+Then run:
+1. npm run dev:server (in one terminal - starts auth proxy)
+2. npm run dev (in another terminal - starts frontend)
+
+Or use: npm run dev:all (runs both together)
+

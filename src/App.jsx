@@ -49,7 +49,7 @@ const App = () => {
               path="/"
               element={
                 user ? (
-                  <Navigate to={user.role === 'cfo' ? '/dashboard' : '/my-dashboard'} replace />
+                  <Navigate to={(user.role?.toLowerCase()?.trim() === 'cfo') ? '/dashboard' : '/my-dashboard'} replace />
                 ) : (
                   <Navigate to="/login" replace />
                 )
