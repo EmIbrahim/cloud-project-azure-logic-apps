@@ -30,7 +30,7 @@ const containerClient = blobService.getContainerClient(CONTAINER_NAME);
  * @param {File} file - The receipt file (image, PDF, or CSV)
  * @returns {Promise<Object>} Extracted receipt data in JSON format
  */
-export const analyzeReceipt = async (file) => {
+export const analyzeReceipt = async (file, userInfo = null) => {
   if (!LOGIC_APP_TRIGGER_URL) {
     throw new Error('Logic App trigger URL is not configured. Set VITE_LOGIC_APP_TRIGGER_URL in .env file.');
   }
@@ -51,8 +51,19 @@ export const analyzeReceipt = async (file) => {
 
     console.log(`Uploading ${tempBlobName} to ${CONTAINER_NAME} for later processing...`);
 
+    // Prepare metadata for the blob
+    // Note: Using lowercase to avoid any potential case-sensitivity or naming convention issues
+    // Metadata names must be valid C# identifiers (no hyphens)
+    const metadata = userInfo ? {
+      userid: String(userInfo.id || ''),
+      useremail: userInfo.email || '',
+      username: userInfo.username || '',
+      uploadedby: userInfo.name || ''
+    } : {};
+
     await blockBlobClient.uploadData(file, {
-      blobHTTPHeaders: { blobContentType: file.type }
+      blobHTTPHeaders: { blobContentType: file.type },
+      metadata
     });
 
     // Call Logic App HTTP trigger for analysis
@@ -90,9 +101,9 @@ export const analyzeReceipt = async (file) => {
     //   { fields: { MerchantName: { valueString: "..." }, ... } }
     // Format 3: Flat format
     //   { MerchantName: "...", TransactionDate: "...", Total: 123.45, ... }
-    
+
     let extractedFields = null;
-    
+
     if (result.documents && result.documents.length > 0) {
       // Document Intelligence format
       extractedFields = result.documents[0].fields;
@@ -102,7 +113,7 @@ export const analyzeReceipt = async (file) => {
     } else if (result.MerchantName || result.merchantName || result.merchant) {
       // Flat format - convert to fields format
       extractedFields = {
-        MerchantName: result.MerchantName || result.merchantName || result.merchant 
+        MerchantName: result.MerchantName || result.merchantName || result.merchant
           ? { valueString: result.MerchantName || result.merchantName || result.merchant }
           : null,
         TransactionDate: result.TransactionDate || result.transactionDate || result.date
@@ -125,7 +136,7 @@ export const analyzeReceipt = async (file) => {
       // Use result as-is
       extractedFields = result;
     }
-    
+
     return {
       extractedData: extractedFields,
       blobName: tempBlobName,
@@ -145,22 +156,33 @@ export const analyzeReceipt = async (file) => {
  * @param {string} existingBlobName - Optional: blob name if file was already uploaded for analysis
  * @returns {Promise<Object>} Upload result
  */
-export const uploadReceipt = async (file, existingBlobName = null) => {
+export const uploadReceipt = async (file, existingBlobName = null, userInfo = null) => {
   try {
     let blobName;
-    
+
+    // Prepare metadata for the blob
+    // Note: Using lowercase to avoid any potential case-sensitivity or naming convention issues
+    const metadata = userInfo ? {
+      userid: String(userInfo.id || ''),
+      useremail: userInfo.email || '',
+      username: userInfo.username || '',
+      uploadedby: userInfo.name || ''
+    } : {};
+
     if (existingBlobName) {
       // File already uploaded for analysis, copy it to final location (without temp prefix)
       // This will trigger the blob trigger for processing
       blobName = existingBlobName.replace(/^temp-/, '');
       const sourceBlob = containerClient.getBlockBlobClient(existingBlobName);
       const destBlob = containerClient.getBlockBlobClient(blobName);
-      
+
       console.log(`Copying ${existingBlobName} to ${blobName} for processing...`);
-      
-      // Copy blob to final location (this will trigger blob trigger)
-      const copyResponse = await destBlob.beginCopyFromURL(sourceBlob.url);
-      
+
+      // Copy blob to final location with metadata
+      const copyResponse = await destBlob.beginCopyFromURL(sourceBlob.url, {
+        metadata
+      });
+
       // Wait for copy to complete
       let copyStatus = await destBlob.getProperties();
       let attempts = 0;
@@ -169,11 +191,11 @@ export const uploadReceipt = async (file, existingBlobName = null) => {
         copyStatus = await destBlob.getProperties();
         attempts++;
       }
-      
+
       if (copyStatus.copyStatus === 'failed') {
         throw new Error('Failed to copy blob to final location');
       }
-      
+
       // Delete temporary blob after successful copy
       try {
         await sourceBlob.delete();
@@ -189,7 +211,8 @@ export const uploadReceipt = async (file, existingBlobName = null) => {
       console.log(`Uploading ${blobName} to ${CONTAINER_NAME}...`);
 
       await blockBlobClient.uploadData(file, {
-        blobHTTPHeaders: { blobContentType: file.type }
+        blobHTTPHeaders: { blobContentType: file.type },
+        metadata
       });
     }
 
@@ -220,12 +243,12 @@ export const fetchReceipts = async (employeeId = null) => {
     if (employeeId) {
       url += `?$filter=EmployeeId eq '${employeeId}'`;
     }
-    
+
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch receipts: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
     // SWA Data API returns data in 'value' array
     return data.value || data || [];
