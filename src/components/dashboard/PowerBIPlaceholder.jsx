@@ -1,5 +1,5 @@
 import { useState } from 'react';
-//
+///
 const PowerBIPlaceholder = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const POWERBI_EMBED_URL = import.meta.env.VITE_POWERBI_EMBED_URL || 
