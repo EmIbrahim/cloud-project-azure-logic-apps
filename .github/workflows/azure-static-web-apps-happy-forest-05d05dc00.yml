@@ -34,6 +34,7 @@ jobs:
           ###### End of Repository/Build Configurations ######
         env: # <--- ADD THIS SECTION
           VITE_LOGIC_APP_TRIGGER_URL: ${{ secrets.VITE_LOGIC_APP_TRIGGER_URL }}
+          VITE_SAS_TOKEN: ${{ secrets.VITE_SAS_TOKEN }}
           
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
@@ -46,5 +47,6 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_HAPPY_FOREST_05D05DC00 }}
           action: "close"
+
 
 
