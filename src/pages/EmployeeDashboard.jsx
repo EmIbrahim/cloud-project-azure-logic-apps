@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { fetchEmployeeDashboard } from '../api/dashboard';
-import { fetchReceipts } from '../api/uploads';
 import Spinner from '../components/common/Spinner';
 import ErrorBanner from '../components/common/ErrorBanner';
 
@@ -17,13 +16,10 @@ const EmployeeDashboard = () => {
       setLoading(true);
       setError('');
       try {
-        // Fetch employee dashboard stats
+        // Fetch employee dashboard stats (includes recent receipts)
         const dashboardData = await fetchEmployeeDashboard(user?.id || user?.username);
         setDashboard(dashboardData);
-
-        // Fetch employee receipts
-        const receiptsData = await fetchReceipts(user?.id || user?.username);
-        setReceipts(receiptsData);
+        setReceipts(dashboardData?.recentReceipts || []);
       } catch (err) {
         setError(err.message || 'Failed to load dashboard data');
       } finally {

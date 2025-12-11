@@ -176,23 +176,70 @@ export const uploadReceipt = async (file, userInfo = null) => {
  * Endpoint: /data-api/rest/Receipt
  * Configured in: swa-db-connections/staticwebapp.database.config.json
  */
+// Get API base URL - mirrors logic from auth/dashboard helpers
+const getApiUrl = () => {
+  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  if (isLocal) {
+    const proxyUrl = import.meta.env.VITE_AUTH_PROXY_URL || 'http://localhost:3001';
+    return proxyUrl;
+  }
+
+  const dataApiUrl = import.meta.env.VITE_DATA_API_URL;
+  if (dataApiUrl) {
+    return dataApiUrl.endsWith('/') ? dataApiUrl.slice(0, -1) : dataApiUrl;
+  }
+  return '';
+};
+
+/**
+ * Fetch receipts for the current employee.
+ * Uses local proxy in dev and SWA Data API in prod.
+ */
 export const fetchReceipts = async (employeeId = null) => {
   try {
-    let url = '/data-api/rest/Receipt';
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const baseUrl = getApiUrl();
+
+    let response;
+
+    if (isLocal) {
+      // Local: hit proxy server then filter client-side
+      response = await fetch(`${baseUrl}/api/receipts`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch receipts: ${response.statusText}`);
+      }
+      const payload = await response.json();
+      const all = payload.value || payload || [];
+      const filtered = employeeId
+        ? all.filter(
+            (r) =>
+              r.EmployeeId === employeeId ||
+              r.UserID === employeeId ||
+              r.UserId === employeeId ||
+              r.Username === employeeId ||
+              r.UserName === employeeId
+          )
+        : all;
+      return filtered;
+    }
+
+    // Production: SWA Data API with filter
+    let url = `${baseUrl}/data-api/rest/Receipt`;
     if (employeeId) {
       url += `?$filter=EmployeeId eq '${employeeId}'`;
     }
 
-    const response = await fetch(url);
+    response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch receipts: ${response.statusText}`);
     }
 
     const data = await response.json();
-    // SWA Data API returns data in 'value' array
     return data.value || data || [];
   } catch (error) {
     console.error('Fetch Receipts Error:', error);
-    throw new Error(`Failed to load receipts: ${error.message}. Ensure the database connection is configured in Azure Portal.`);
+    throw new Error(
+      `Failed to load receipts: ${error.message}. Ensure the database connection is configured in Azure Portal.`
+    );
   }
 };

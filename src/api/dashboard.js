@@ -30,6 +30,7 @@ export const fetchDashboard = async () => {
     const baseUrl = getApiUrl();
     
     let response;
+    let users = [];
     
     if (isLocal) {
       // Use local proxy server
@@ -37,15 +38,22 @@ export const fetchDashboard = async () => {
       response = await axios.get(`${baseUrl}/api/receipts`, {
         timeout: 10000
       });
+
+      // Attempt to fetch Users from SWA Data API if available (needed for name mapping)
+      users = await tryFetchUsers(isLocal, baseUrl);
     } else {
       // Use SWA Data API
       console.log('Fetching receipts from SWA Data API...');
       response = await axios.get(`${baseUrl}/data-api/rest/Receipt`, {
         timeout: 10000
       });
+
+      // Fetch users for name/email mapping
+      users = await tryFetchUsers(isLocal, baseUrl);
     }
     
-    const receipts = response.data.value || response.data || [];
+    // Drop receipts that do not have a user identifier (cannot attribute spend)
+    const receipts = (response.data.value || response.data || []).filter((r) => r.UserID !== null && r.UserID !== undefined && r.UserID !== '');
     console.log(`Fetched ${receipts.length} receipts from database`);
     
     // Log sample receipt to debug status field
@@ -60,12 +68,24 @@ export const fetchDashboard = async () => {
       });
     }
 
+    const usersById = Array.isArray(users)
+      ? users.reduce((acc, u) => {
+          const key =
+            u.Id ?? u.id ?? u.UserID ?? u.UserId;
+          if (key !== undefined && key !== null) acc[String(key)] = u;
+          return acc;
+        }, {})
+      : {};
+
+    const approvedReceipts = receipts.filter(isApproved);
+    const pendingReceipts = receipts.filter(isPending);
+
     // Transform Flat SQL Data to Chart Data
     const dashboardData = {
-      totalSpendByVendor: processVendorSpend(receipts),
-      dailyExpenseTrend: processDailyTrend(receipts),
-      pendingApprovals: processPendingApprovals(receipts),
-      employeeMonthlySpending: processEmployeeMonthlySpending(receipts)
+      totalSpendByVendor: processVendorSpend(approvedReceipts),
+      dailyExpenseTrend: processDailyTrend(approvedReceipts),
+      pendingApprovals: processPendingApprovals(receipts, usersById),
+      employeeMonthlySpending: processEmployeeMonthlySpending(approvedReceipts, usersById)
     };
     
     console.log('Dashboard data processed:', {
@@ -109,12 +129,16 @@ export const fetchEmployeeDashboard = async (employeeId) => {
       const receipts = allReceipts.filter(r => 
         (r.EmployeeId === employeeId) || 
         (r.EmployeeName === employeeId) ||
-        (r.Username === employeeId)
+        (r.Username === employeeId) ||
+        (r.UserID === employeeId) ||
+        (r.UserId === employeeId)
       );
       response.data = { value: receipts };
     } else {
       // Use SWA Data API
-      response = await axios.get(`${baseUrl}/data-api/rest/Receipt?$filter=EmployeeId eq '${employeeId}'`, {
+      // Use SWA Data API (filter by both EmployeeId and UserID fields to match schema)
+      const filter = encodeURIComponent(`EmployeeId eq '${employeeId}' or UserID eq '${employeeId}' or UserId eq '${employeeId}'`);
+      response = await axios.get(`${baseUrl}/data-api/rest/Receipt?$filter=${filter}`, {
         timeout: 10000
       });
     }
@@ -122,9 +146,14 @@ export const fetchEmployeeDashboard = async (employeeId) => {
     const receipts = response.data.value || [];
 
     const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    // Prefer ApprovalDate month for approved receipts; fallback to TransactionDate
     const monthlyReceipts = receipts.filter(r => {
-      const receiptDate = r.TransactionDate ? r.TransactionDate.split('T')[0].slice(0, 7) : '';
-      return receiptDate === currentMonth && isApproved(r);
+      if (!isApproved(r)) return false;
+      const monthKey =
+        getMonthKey(r.ApprovalDate) ||
+        getMonthKey(r.ApprovedDate) ||
+        getMonthKey(r.TransactionDate);
+      return monthKey === currentMonth;
     });
 
     const monthlyTotal = monthlyReceipts.reduce((sum, r) => sum + (Number(r.TotalAmount) || 0), 0);
@@ -159,6 +188,50 @@ const normalizeStatus = (status) => {
   return normalized.toLowerCase();
 };
 
+// Attempts to fetch Users table for name mapping; works in production and in local when VITE_DATA_API_URL is set
+const tryFetchUsers = async (isLocal, baseUrl) => {
+  const endpoints = [];
+
+  // Primary: production base URL
+  endpoints.push(`${baseUrl}/data-api/rest/Users`);
+
+  // Local dev: if a full data API URL is configured, try that too
+  const configured = import.meta.env.VITE_DATA_API_URL;
+  if (isLocal && configured) {
+    const cleaned = configured.endsWith('/') ? configured.slice(0, -1) : configured;
+    endpoints.push(`${cleaned}/rest/Users`, `${cleaned}/Users`);
+  }
+
+  for (const url of endpoints) {
+    try {
+      const resp = await axios.get(url, { timeout: 8000 });
+      const val = resp.data?.value || resp.data || [];
+      if (Array.isArray(val)) {
+        console.log('Loaded Users for name mapping from', url, 'count:', val.length);
+        return val;
+      }
+    } catch (err) {
+      console.warn('Could not load Users from', url, '-', err?.message);
+    }
+  }
+
+  return [];
+};
+
+/**
+ * Extracts YYYY-MM from an ISO-like date string
+ */
+const getMonthKey = (dateString) => {
+  if (!dateString) return '';
+  try {
+    const d = new Date(dateString);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString().slice(0, 7);
+  } catch {
+    return '';
+  }
+};
+
 /**
  * Checks if a receipt has approved status (case-insensitive, handles quotes)
  */
@@ -181,7 +254,7 @@ const processVendorSpend = (receipts) => {
   let approvedCount = 0;
   
   receipts.forEach((r) => {
-    if (isApproved(r)) {
+    if (isApproved(r) && (r.UserID || r.UserId)) {
       approvedCount++;
       const vendor = r.MerchantName || 'Unknown';
       const amount = Number(r.TotalAmount) || 0;
@@ -209,7 +282,11 @@ const processDailyTrend = (receipts) => {
   receipts.forEach((r) => {
     if (isApproved(r)) {
       approvedCount++;
-      const date = r.TransactionDate ? r.TransactionDate.split('T')[0] : 'Unknown';
+      const date =
+        r.ApprovalDate?.split('T')[0] ||
+        r.ApprovedDate?.split('T')[0] ||
+        r.TransactionDate?.split('T')[0] ||
+        'Unknown';
       const amount = Number(r.TotalAmount) || 0;
       map[date] = (map[date] || 0) + amount;
     }
@@ -227,32 +304,66 @@ const processDailyTrend = (receipts) => {
   return result;
 };
 
-const processPendingApprovals = (receipts) => {
-  console.log('Processing pending approvals from', receipts.length, 'receipts');
+const resolveEmployeeName = (receipt, usersById) => {
+  const lookupKey =
+    receipt.UserID !== undefined && receipt.UserID !== null
+      ? String(receipt.UserID)
+      : receipt.UserId !== undefined && receipt.UserId !== null
+        ? String(receipt.UserId)
+        : null;
+
+  const user = lookupKey ? usersById?.[lookupKey] : null;
+
+  // Prefer mapped user data; fall back to receipt-supplied employee name/username.
+  if (user) {
+    return (
+      user.Name ||
+      user.FullName ||
+      user.Username ||
+      user.Email ||
+      lookupKey
+    );
+  }
+
+  return (
+    receipt.EmployeeName ||
+    receipt.Username ||
+    receipt.UserName ||
+    lookupKey ||
+    'Unknown'
+  );
+};
+
+const processPendingApprovals = (receipts, usersById = {}) => {
+  console.log('Processing approval status counts from', receipts.length, 'receipts');
   const employeeMap = {};
-  let pendingCount = 0;
-  
+
   receipts.forEach((r) => {
-    if (isPending(r)) {
-      pendingCount++;
-      const employee = r.EmployeeName || r.UserName || r.CreatedBy || 'Unknown';
-      employeeMap[employee] = (employeeMap[employee] || 0) + 1;
+    if (!r.UserID && !r.UserId) {
+      return; // skip receipts we cannot attribute
     }
+    const employee = resolveEmployeeName(r, usersById);
+    const status = normalizeStatus(r.Status);
+    if (!employeeMap[employee]) {
+      employeeMap[employee] = { approved: 0, pending: 0, rejected: 0 };
+    }
+    if (status === 'approved') employeeMap[employee].approved += 1;
+    else if (status === 'rejected') employeeMap[employee].rejected += 1;
+    else employeeMap[employee].pending += 1;
   });
 
-  console.log(`Found ${pendingCount} pending receipts`);
-  console.log('Pending approvals map:', employeeMap);
+  const result = Object.entries(employeeMap)
+    .map(([employee, counts]) => ({
+      employee,
+      ...counts
+    }))
+    .sort((a, b) => (b.pending + b.rejected + b.approved) - (a.pending + a.rejected + a.approved));
 
-  const result = Object.entries(employeeMap).map(([employee, count]) => ({
-    employee,
-    count
-  })).sort((a, b) => b.count - a.count);
-  
-  console.log('Pending approvals result:', result);
+  console.log('Approval status result:', result);
   return result;
 };
 
-const processEmployeeMonthlySpending = (receipts) => {
+const processEmployeeMonthlySpending = (receipts, usersById = {}) => {
   console.log('Processing employee monthly spending from', receipts.length, 'receipts');
   const employeeMap = {};
   const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -262,10 +373,13 @@ const processEmployeeMonthlySpending = (receipts) => {
   receipts.forEach((r) => {
     if (isApproved(r)) {
       approvedCount++;
-      const receiptDate = r.TransactionDate ? r.TransactionDate.split('T')[0].slice(0, 7) : '';
-      if (receiptDate === currentMonth) {
+      const receiptMonth =
+        getMonthKey(r.ApprovalDate) ||
+        getMonthKey(r.ApprovedDate) ||
+        getMonthKey(r.TransactionDate);
+      if (receiptMonth === currentMonth) {
         currentMonthCount++;
-        const employee = r.EmployeeName || r.UserName || 'Unknown';
+        const employee = resolveEmployeeName(r, usersById);
         const amount = Number(r.TotalAmount) || 0;
         employeeMap[employee] = (employeeMap[employee] || 0) + amount;
       }
@@ -278,8 +392,7 @@ const processEmployeeMonthlySpending = (receipts) => {
   const result = Object.entries(employeeMap)
     .map(([employee, spend]) => ({
       employee,
-      spend: Math.round(spend * 100) / 100,
-      salary: 0 // Would come from separate employee table
+      spend: Math.round(spend * 100) / 100
     }))
     .sort((a, b) => b.spend - a.spend);
     
