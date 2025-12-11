@@ -226,7 +226,20 @@ export const fetchReceipts = async (employeeId = null) => {
     // Production: SWA Data API with filter
     let url = `${baseUrl}/data-api/rest/Receipt`;
     if (employeeId) {
-      url += `?$filter=EmployeeId eq '${employeeId}'`;
+      const numericId = Number(employeeId);
+      const hasNumeric = !Number.isNaN(numericId);
+      const filterParts = [
+        `EmployeeId eq '${employeeId}'`,
+        `UserID eq '${employeeId}'`,
+        `UserId eq '${employeeId}'`
+      ];
+      if (hasNumeric) {
+        filterParts.push(`EmployeeId eq ${numericId}`);
+        filterParts.push(`UserID eq ${numericId}`);
+        filterParts.push(`UserId eq ${numericId}`);
+      }
+      const filter = encodeURIComponent(filterParts.join(' or '));
+      url += `?$filter=${filter}`;
     }
 
     response = await fetch(url);

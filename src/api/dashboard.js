@@ -126,18 +126,32 @@ export const fetchEmployeeDashboard = async (employeeId) => {
         timeout: 10000
       });
       const allReceipts = response.data.value || [];
-      const receipts = allReceipts.filter(r => 
-        (r.EmployeeId === employeeId) || 
-        (r.EmployeeName === employeeId) ||
-        (r.Username === employeeId) ||
-        (r.UserID === employeeId) ||
-        (r.UserId === employeeId)
-      );
+      const idStr = employeeId != null ? String(employeeId) : '';
+      const receipts = allReceipts.filter((r) => {
+        const userIdStr =
+          r.UserID != null ? String(r.UserID) :
+          r.UserId != null ? String(r.UserId) :
+          r.EmployeeId != null ? String(r.EmployeeId) : '';
+        const username = r.EmployeeName || r.Username || r.UserName || '';
+        return userIdStr === idStr || username === idStr;
+      });
       response.data = { value: receipts };
     } else {
       // Use SWA Data API
-      // Use SWA Data API (filter by both EmployeeId and UserID fields to match schema)
-      const filter = encodeURIComponent(`EmployeeId eq '${employeeId}' or UserID eq '${employeeId}' or UserId eq '${employeeId}'`);
+      // Use SWA Data API (filter by both EmployeeId and UserID fields to match schema; handle numeric IDs)
+      const numericId = Number(employeeId);
+      const hasNumeric = !Number.isNaN(numericId);
+      const filterRaw = [
+        `EmployeeId eq '${employeeId}'`,
+        `UserID eq '${employeeId}'`,
+        `UserId eq '${employeeId}'`,
+      ];
+      if (hasNumeric) {
+        filterRaw.push(`EmployeeId eq ${numericId}`);
+        filterRaw.push(`UserID eq ${numericId}`);
+        filterRaw.push(`UserId eq ${numericId}`);
+      }
+      const filter = encodeURIComponent(filterRaw.join(' or '));
       response = await axios.get(`${baseUrl}/data-api/rest/Receipt?$filter=${filter}`, {
         timeout: 10000
       });
