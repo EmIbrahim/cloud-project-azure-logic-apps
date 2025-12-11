@@ -47,7 +47,7 @@ const Upload = () => {
     try {
       // Step 2: Upload to blob storage for final processing
       // This will trigger the Logic App blob trigger
-      await uploadReceipt(selectedFile, analysisResult.blobName, user);
+      await uploadReceipt(selectedFile, user);
       setSuccess(true);
 
       // Reset after success

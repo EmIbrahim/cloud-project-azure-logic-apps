@@ -45,27 +45,6 @@ export const analyzeReceipt = async (file, userInfo = null) => {
     }
     const base64 = btoa(binary);
 
-    // Upload file to blob storage temporarily (for later use when user confirms)
-    const tempBlobName = `temp-${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '')}`;
-    const blockBlobClient = containerClient.getBlockBlobClient(tempBlobName);
-
-    console.log(`Uploading ${tempBlobName} to ${CONTAINER_NAME} for later processing...`);
-
-    // Prepare metadata for the blob
-    // Note: Using lowercase to avoid any potential case-sensitivity or naming convention issues
-    // Metadata names must be valid C# identifiers (no hyphens)
-    const metadata = userInfo ? {
-      userid: String(userInfo.id || ''),
-      useremail: userInfo.email || '',
-      username: userInfo.username || '',
-      uploadedby: userInfo.name || ''
-    } : {};
-
-    await blockBlobClient.uploadData(file, {
-      blobHTTPHeaders: { blobContentType: file.type },
-      metadata
-    });
-
     // Call Logic App HTTP trigger for analysis
     // The Logic App will:
     // - Receive file content (base64)
@@ -139,7 +118,6 @@ export const analyzeReceipt = async (file, userInfo = null) => {
 
     return {
       extractedData: extractedFields,
-      blobName: tempBlobName,
       fileName: file.name
     };
   } catch (error) {
@@ -149,19 +127,22 @@ export const analyzeReceipt = async (file, userInfo = null) => {
 };
 
 /**
- * Uploads a receipt file to Azure Blob Storage for final processing
+ * Uploads a receipt file to Azure Blob Storage with metadata for processing
  * This triggers the Logic App blob trigger which processes and sends for approval
  * 
  * @param {File} file - The receipt file
- * @param {string} existingBlobName - Optional: blob name if file was already uploaded for analysis
+ * @param {Object} userInfo - Optional: user information to attach as metadata
  * @returns {Promise<Object>} Upload result
  */
-export const uploadReceipt = async (file, existingBlobName = null, userInfo = null) => {
+export const uploadReceipt = async (file, userInfo = null) => {
   try {
-    let blobName;
+    // Upload file directly with metadata
+    const blobName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '')}`;
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+
+    console.log(`Uploading ${blobName} to ${CONTAINER_NAME}...`);
 
     // Prepare metadata for the blob
-    // Note: Using lowercase to avoid any potential case-sensitivity or naming convention issues
     const metadata = userInfo ? {
       userid: String(userInfo.id || ''),
       useremail: userInfo.email || '',
@@ -169,52 +150,10 @@ export const uploadReceipt = async (file, existingBlobName = null, userInfo = nu
       uploadedby: userInfo.name || ''
     } : {};
 
-    if (existingBlobName) {
-      // File already uploaded for analysis, copy it to final location (without temp prefix)
-      // This will trigger the blob trigger for processing
-      blobName = existingBlobName.replace(/^temp-/, '');
-      const sourceBlob = containerClient.getBlockBlobClient(existingBlobName);
-      const destBlob = containerClient.getBlockBlobClient(blobName);
-
-      console.log(`Copying ${existingBlobName} to ${blobName} for processing...`);
-
-      // Copy blob to final location with metadata
-      const copyResponse = await destBlob.beginCopyFromURL(sourceBlob.url, {
-        metadata
-      });
-
-      // Wait for copy to complete
-      let copyStatus = await destBlob.getProperties();
-      let attempts = 0;
-      while (copyStatus.copyStatus === 'pending' && attempts < 20) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        copyStatus = await destBlob.getProperties();
-        attempts++;
-      }
-
-      if (copyStatus.copyStatus === 'failed') {
-        throw new Error('Failed to copy blob to final location');
-      }
-
-      // Delete temporary blob after successful copy
-      try {
-        await sourceBlob.delete();
-      } catch (deleteError) {
-        console.warn('Failed to delete temp blob:', deleteError);
-        // Continue anyway - the copy was successful
-      }
-    } else {
-      // Upload new file directly
-      blobName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '')}`;
-      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-
-      console.log(`Uploading ${blobName} to ${CONTAINER_NAME}...`);
-
-      await blockBlobClient.uploadData(file, {
-        blobHTTPHeaders: { blobContentType: file.type },
-        metadata
-      });
-    }
+    await blockBlobClient.uploadData(file, {
+      blobHTTPHeaders: { blobContentType: file.type },
+      metadata
+    });
 
     console.log('Upload success! Logic App will process this automatically via blob trigger.');
 
