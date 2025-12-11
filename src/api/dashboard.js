@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// Get API base URL - use local proxy server for local dev, SWA Data API for production
+// Get API base URL - use local proxy server for local dev, Azure Functions for production
 const getApiUrl = () => {
   const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   
@@ -9,48 +9,36 @@ const getApiUrl = () => {
     return proxyUrl;
   }
   
-  const dataApiUrl = import.meta.env.VITE_DATA_API_URL;
-  if (dataApiUrl) {
-    return dataApiUrl.endsWith('/') ? dataApiUrl.slice(0, -1) : dataApiUrl;
-  }
+  // Production: Use relative paths (Azure Functions are served from /api)
   return '';
 };
 
 /**
- * Fetches dashboard data from Azure SQL Database via SWA Data API or local proxy
+ * Fetches dashboard data from Azure SQL Database via Azure Functions or local proxy
  * Transforms flat SQL data into chart-ready formats
  * 
  * Connection: 
  * - Localhost: Proxy server → Azure SQL Database (ReceiptsDB)
- * - Production: Azure Static Web Apps Data API → Azure SQL Database (ReceiptsDB)
+ * - Production: Azure Functions → Azure SQL Database (ReceiptsDB)
  */
 export const fetchDashboard = async () => {
   try {
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const baseUrl = getApiUrl();
+    const receiptsEndpoint = `${baseUrl}/api/receipts`;
     
-    let response;
-    let users = [];
+    console.log('Dashboard API Call:', {
+      isLocal: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+      baseUrl,
+      receiptsEndpoint
+    });
     
-    if (isLocal) {
-      // Use local proxy server
-      console.log('Fetching receipts from local proxy server...');
-      response = await axios.get(`${baseUrl}/api/receipts`, {
-        timeout: 10000
-      });
+    console.log('Fetching receipts from API...');
+    const response = await axios.get(receiptsEndpoint, {
+      timeout: 10000
+    });
 
-      // Attempt to fetch Users from SWA Data API if available (needed for name mapping)
-      users = await tryFetchUsers(isLocal, baseUrl);
-    } else {
-      // Use SWA Data API
-      console.log('Fetching receipts from SWA Data API...');
-      response = await axios.get(`${baseUrl}/data-api/rest/Receipt`, {
-        timeout: 10000
-      });
-
-      // Fetch users for name/email mapping
-      users = await tryFetchUsers(isLocal, baseUrl);
-    }
+    // Fetch users for name/email mapping
+    const users = await tryFetchUsers(baseUrl);
     
     // Drop receipts that do not have a user identifier (cannot attribute spend)
     const receipts = (response.data.value || response.data || []).filter((r) => r.UserID !== null && r.UserID !== undefined && r.UserID !== '');
@@ -103,6 +91,12 @@ export const fetchDashboard = async () => {
       response: error.response?.data,
       status: error.response?.status
     });
+    
+    if (error.response?.status === 500) {
+      const errorMsg = error.response?.data || error.response?.statusText || 'Data API call failure';
+      throw new Error(`Database connection failed (500). Please configure DATABASE_CONNECTION_STRING in Azure Portal → Configuration → Application settings. Error: ${errorMsg}`);
+    }
+    
     throw new Error(`Failed to load dashboard data: ${error.message}. Ensure the database connection is configured.`);
   }
 };
@@ -110,54 +104,28 @@ export const fetchDashboard = async () => {
 /**
  * Fetches employee-specific dashboard data from Azure SQL Database
  * 
- * Connection: Azure Static Web Apps Data API → Azure SQL Database (ReceiptsDB)
+ * Connection: Azure Functions or local proxy → Azure SQL Database (ReceiptsDB)
  * Filters receipts by EmployeeId
  */
 export const fetchEmployeeDashboard = async (employeeId) => {
   try {
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const baseUrl = getApiUrl();
     
-    let response;
+    // Fetch all receipts and filter client-side (works for both local and production)
+    const response = await axios.get(`${baseUrl}/api/receipts`, {
+      timeout: 10000
+    });
     
-    if (isLocal) {
-      // Use local proxy server - filter in memory for now
-      response = await axios.get(`${baseUrl}/api/receipts`, {
-        timeout: 10000
-      });
-      const allReceipts = response.data.value || [];
-      const idStr = employeeId != null ? String(employeeId) : '';
-      const receipts = allReceipts.filter((r) => {
-        const userIdStr =
-          r.UserID != null ? String(r.UserID) :
-          r.UserId != null ? String(r.UserId) :
-          r.EmployeeId != null ? String(r.EmployeeId) : '';
-        const username = r.EmployeeName || r.Username || r.UserName || '';
-        return userIdStr === idStr || username === idStr;
-      });
-      response.data = { value: receipts };
-    } else {
-      // Use SWA Data API
-      // Use SWA Data API (filter by both EmployeeId and UserID fields to match schema; handle numeric IDs)
-      const numericId = Number(employeeId);
-      const hasNumeric = !Number.isNaN(numericId);
-      const filterRaw = [
-        `EmployeeId eq '${employeeId}'`,
-        `UserID eq '${employeeId}'`,
-        `UserId eq '${employeeId}'`,
-      ];
-      if (hasNumeric) {
-        filterRaw.push(`EmployeeId eq ${numericId}`);
-        filterRaw.push(`UserID eq ${numericId}`);
-        filterRaw.push(`UserId eq ${numericId}`);
-      }
-      const filter = encodeURIComponent(filterRaw.join(' or '));
-      response = await axios.get(`${baseUrl}/data-api/rest/Receipt?$filter=${filter}`, {
-        timeout: 10000
-      });
-    }
-    
-    const receipts = response.data.value || [];
+    const allReceipts = response.data.value || [];
+    const idStr = employeeId != null ? String(employeeId) : '';
+    const receipts = allReceipts.filter((r) => {
+      const userIdStr =
+        r.UserID != null ? String(r.UserID) :
+        r.UserId != null ? String(r.UserId) :
+        r.EmployeeId != null ? String(r.EmployeeId) : '';
+      const username = r.EmployeeName || r.Username || r.UserName || '';
+      return userIdStr === idStr || username === idStr;
+    });
 
     const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
     // Prefer ApprovalDate month for approved receipts; fallback to TransactionDate
@@ -185,6 +153,12 @@ export const fetchEmployeeDashboard = async (employeeId) => {
     };
   } catch (error) {
     console.error('Failed to fetch employee dashboard:', error);
+    
+    if (error.response?.status === 500) {
+      const errorMsg = error.response?.data || error.response?.statusText || 'Data API call failure';
+      throw new Error(`Database connection failed (500). Please configure DATABASE_CONNECTION_STRING in Azure Portal → Configuration → Application settings. Error: ${errorMsg}`);
+    }
+    
     throw new Error(`Failed to load employee dashboard: ${error.message}`);
   }
 };
@@ -202,33 +176,26 @@ const normalizeStatus = (status) => {
   return normalized.toLowerCase();
 };
 
-// Attempts to fetch Users table for name mapping; works in production and in local when VITE_DATA_API_URL is set
-const tryFetchUsers = async (isLocal, baseUrl) => {
-  const endpoints = [];
-
-  // Primary: production base URL
-  endpoints.push(`${baseUrl}/data-api/rest/Users`);
-
-  // Local dev: if a full data API URL is configured, try that too
-  const configured = import.meta.env.VITE_DATA_API_URL;
-  if (isLocal && configured) {
-    const cleaned = configured.endsWith('/') ? configured.slice(0, -1) : configured;
-    endpoints.push(`${cleaned}/rest/Users`, `${cleaned}/Users`);
-  }
-
-  for (const url of endpoints) {
-    try {
-      const resp = await axios.get(url, { timeout: 8000 });
-      const val = resp.data?.value || resp.data || [];
-      if (Array.isArray(val)) {
-        console.log('Loaded Users for name mapping from', url, 'count:', val.length);
-        return val;
-      }
-    } catch (err) {
-      console.warn('Could not load Users from', url, '-', err?.message);
+// Attempts to fetch Users table for name mapping
+const tryFetchUsers = async (baseUrl) => {
+  try {
+    const usersEndpoint = `${baseUrl}/api/users`;
+    console.log('Fetching users from:', usersEndpoint);
+    const resp = await axios.get(usersEndpoint, { timeout: 8000 });
+    const val = resp.data?.value || resp.data || [];
+    if (Array.isArray(val)) {
+      console.log('Loaded Users for name mapping, count:', val.length);
+      return val;
     }
+  } catch (err) {
+    console.warn('Could not load Users -', err?.message);
+    console.warn('Error details:', {
+      message: err.message,
+      response: err.response?.data,
+      status: err.response?.status,
+      url: err.config?.url
+    });
   }
-
   return [];
 };
 

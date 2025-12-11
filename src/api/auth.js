@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// Get API base URL - use local proxy server for local dev, SWA Data API for production
+// Get API base URL - use local proxy server for local dev, Azure Functions for production
 const getApiUrl = () => {
   // Check if we're on localhost
   const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -11,82 +11,49 @@ const getApiUrl = () => {
     return proxyUrl;
   }
   
-  // Production: Use SWA Data API
-  const dataApiUrl = import.meta.env.VITE_DATA_API_URL;
-  if (dataApiUrl) {
-    return dataApiUrl.endsWith('/') ? dataApiUrl.slice(0, -1) : dataApiUrl;
-  }
-  // Default to relative path (works when deployed to SWA)
+  // Production: Use relative paths (Azure Functions are served from /api)
   return '';
 };
 
 /**
- * Authenticates user against Azure SQL Database via SWA Data API
+ * Authenticates user against Azure SQL Database via Azure Functions or local proxy
  * 
- * Connection: Azure Static Web Apps Data API → Azure SQL Database (ReceiptsDB)
+ * Connection: 
+ * - Localhost: Express proxy → Azure SQL Database (ReceiptsDB)
+ * - Production: Azure Functions → Azure SQL Database (ReceiptsDB)
  * Table: dbo.Users
- * 
- * Environment Variables:
- * - VITE_DATA_API_URL: (Optional) Full URL to SWA Data API, e.g., "https://your-app.azurestaticapps.net/data-api"
- *   If not set, uses relative path "/data-api" (works when deployed)
  */
 export const loginApi = async (username, password) => {
   try {
     const baseUrl = getApiUrl();
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const endpoint = `${baseUrl}/api/login`;
     
-    let response;
+    console.log('Login API Call:', {
+      isLocal: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+      baseUrl,
+      endpoint
+    });
     
-    if (isLocal) {
-      // Use local proxy server
-      response = await axios.post(`${baseUrl}/api/auth/login`, {
-        username,
-        password
-      }, {
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      });
-      
-      // Proxy server returns user directly
-      return response.data;
-    } else {
-      // Use SWA Data API
-      const endpoint = `${baseUrl}/data-api/rest/Users?$filter=Username eq '${encodeURIComponent(username)}'`;
-      
-      response = await axios.get(endpoint, {
-        headers: {
-          'Accept': 'application/json'
-        },
-        timeout: 10000
-      });
-      
-      const users = response.data.value || response.data || [];
-      const user = Array.isArray(users) ? users[0] : users;
-      
-      if (!user) {
-        throw new Error('Invalid credentials');
-      }
-      
-      // Verify password
-      const userPassword = user.Password || user.password;
-      if (userPassword !== password) {
-        throw new Error('Invalid credentials');
-      }
-      
-      // Return user without password
-      const { Password, password: _, ...safeUser } = user;
-      return {
-        id: safeUser.Id || safeUser.id,
-        username: safeUser.Username || safeUser.username || username,
-        name: safeUser.Name || safeUser.FullName || safeUser.name || username,
-        role: (safeUser.Role || safeUser.role || 'employee').toLowerCase(),
-        email: safeUser.Email || safeUser.email || username
-      };
-    }
+    // Use unified API endpoint (works for both local and production)
+    const response = await axios.post(endpoint, {
+      username,
+      password
+    }, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+    
+    // Both local and Azure Functions return user directly
+    return response.data;
   } catch (error) {
     console.error('Authentication Error:', error);
+    
+    if (error.response?.status === 500) {
+      const errorMsg = error.response?.data || error.response?.statusText || 'Data API call failure';
+      throw new Error(`Database connection failed (500). Please configure DATABASE_CONNECTION_STRING in Azure Portal → Configuration → Application settings. Error: ${errorMsg}`);
+    }
     
     if (error.response?.status === 404) {
       throw new Error('Users table not found. Please ensure the database connection is configured.');

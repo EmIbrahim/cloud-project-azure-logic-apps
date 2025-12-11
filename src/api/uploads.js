@@ -169,12 +169,11 @@ export const uploadReceipt = async (file, userInfo = null) => {
 };
 
 /**
- * Fetches receipts from Azure SQL Database via SWA Data API
+ * Fetches receipts from Azure SQL Database via Azure Functions or local proxy
  * Returns receipts filtered by employee if employeeId is provided
  * 
- * Connection: Azure Static Web Apps Data API → Azure SQL Database (ReceiptsDB)
- * Endpoint: /data-api/rest/Receipt
- * Configured in: swa-db-connections/staticwebapp.database.config.json
+ * Connection: Azure Functions or local proxy → Azure SQL Database (ReceiptsDB)
+ * Endpoint: /api/receipts
  */
 // Get API base URL - mirrors logic from auth/dashboard helpers
 const getApiUrl = () => {
@@ -183,72 +182,50 @@ const getApiUrl = () => {
     const proxyUrl = import.meta.env.VITE_AUTH_PROXY_URL || 'http://localhost:3001';
     return proxyUrl;
   }
-
-  const dataApiUrl = import.meta.env.VITE_DATA_API_URL;
-  if (dataApiUrl) {
-    return dataApiUrl.endsWith('/') ? dataApiUrl.slice(0, -1) : dataApiUrl;
-  }
+  // Production: Use relative paths (Azure Functions are served from /api)
   return '';
 };
 
 /**
  * Fetch receipts for the current employee.
- * Uses local proxy in dev and SWA Data API in prod.
+ * Uses unified API endpoint (works for both local and production).
  */
 export const fetchReceipts = async (employeeId = null) => {
   try {
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const baseUrl = getApiUrl();
 
-    let response;
-
-    if (isLocal) {
-      // Local: hit proxy server then filter client-side
-      response = await fetch(`${baseUrl}/api/receipts`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch receipts: ${response.statusText}`);
-      }
-      const payload = await response.json();
-      const all = payload.value || payload || [];
-      const filtered = employeeId
-        ? all.filter(
-            (r) =>
-              r.EmployeeId === employeeId ||
-              r.UserID === employeeId ||
-              r.UserId === employeeId ||
-              r.Username === employeeId ||
-              r.UserName === employeeId
-          )
-        : all;
-      return filtered;
-    }
-
-    // Production: SWA Data API with filter
-    let url = `${baseUrl}/data-api/rest/Receipt`;
-    if (employeeId) {
-      const numericId = Number(employeeId);
-      const hasNumeric = !Number.isNaN(numericId);
-      const filterParts = [
-        `EmployeeId eq '${employeeId}'`,
-        `UserID eq '${employeeId}'`,
-        `UserId eq '${employeeId}'`
-      ];
-      if (hasNumeric) {
-        filterParts.push(`EmployeeId eq ${numericId}`);
-        filterParts.push(`UserID eq ${numericId}`);
-        filterParts.push(`UserId eq ${numericId}`);
-      }
-      const filter = encodeURIComponent(filterParts.join(' or '));
-      url += `?$filter=${filter}`;
-    }
-
-    response = await fetch(url);
+    // Fetch all receipts and filter client-side
+    const response = await fetch(`${baseUrl}/api/receipts`);
     if (!response.ok) {
       throw new Error(`Failed to fetch receipts: ${response.statusText}`);
     }
-
-    const data = await response.json();
-    return data.value || data || [];
+    
+    const payload = await response.json();
+    const all = payload.value || payload || [];
+    
+    if (!employeeId) {
+      return all;
+    }
+    
+    // Filter by employee ID
+    const idStr = String(employeeId);
+    const numericId = Number(employeeId);
+    const hasNumeric = !Number.isNaN(numericId);
+    
+    return all.filter((r) => {
+      const userIdStr = r.UserID != null ? String(r.UserID) :
+                       r.UserId != null ? String(r.UserId) :
+                       r.EmployeeId != null ? String(r.EmployeeId) : '';
+      const username = r.Username || r.UserName || '';
+      
+      return userIdStr === idStr ||
+             username === idStr ||
+             (hasNumeric && (
+               Number(r.UserID) === numericId ||
+               Number(r.UserId) === numericId ||
+               Number(r.EmployeeId) === numericId
+             ));
+    });
   } catch (error) {
     console.error('Fetch Receipts Error:', error);
     throw new Error(
