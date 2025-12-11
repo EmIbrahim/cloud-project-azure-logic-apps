@@ -6,21 +6,20 @@ const CONTAINER_NAME = 'raw-receipts';
 const SAS_TOKEN = import.meta.env.VITE_SAS_TOKEN;
 const LOGIC_APP_TRIGGER_URL = import.meta.env.VITE_LOGIC_APP_TRIGGER_URL;
 
-if (!SAS_TOKEN) {
-  throw new Error('VITE_SAS_TOKEN is missing. Set it in your .env file (begins with ?sv=).');
-}
-
-if (!LOGIC_APP_TRIGGER_URL) {
-  console.warn('VITE_LOGIC_APP_TRIGGER_URL is not set. Analysis feature will not work.');
-}
-
-// Initialize the Blob Service Client
-const blobService = new BlobServiceClient(
-  `https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${SAS_TOKEN}`
-);
-
-// Get the Container Client
-const containerClient = blobService.getContainerClient(CONTAINER_NAME);
+// Lazy initialize blob client to avoid crashing build/runtime when env vars are missing (e.g., prod without uploads configured)
+let containerClient = null;
+const getContainerClient = () => {
+  if (!SAS_TOKEN) {
+    throw new Error('VITE_SAS_TOKEN is missing. Set it in your environment (starts with ?sv=).');
+  }
+  if (!containerClient) {
+    const blobService = new BlobServiceClient(
+      `https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${SAS_TOKEN}`
+    );
+    containerClient = blobService.getContainerClient(CONTAINER_NAME);
+  }
+  return containerClient;
+};
 
 /**
  * Analyzes a receipt file using Azure Logic App HTTP trigger
@@ -32,7 +31,7 @@ const containerClient = blobService.getContainerClient(CONTAINER_NAME);
  */
 export const analyzeReceipt = async (file, userInfo = null) => {
   if (!LOGIC_APP_TRIGGER_URL) {
-    throw new Error('Logic App trigger URL is not configured. Set VITE_LOGIC_APP_TRIGGER_URL in .env file.');
+    throw new Error('Logic App trigger URL is not configured. Set VITE_LOGIC_APP_TRIGGER_URL in your environment.');
   }
 
   try {
@@ -136,9 +135,10 @@ export const analyzeReceipt = async (file, userInfo = null) => {
  */
 export const uploadReceipt = async (file, userInfo = null) => {
   try {
+    const container = getContainerClient();
     // Upload file directly with metadata
     const blobName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '')}`;
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    const blockBlobClient = container.getBlockBlobClient(blobName);
 
     console.log(`Uploading ${blobName} to ${CONTAINER_NAME}...`);
 
