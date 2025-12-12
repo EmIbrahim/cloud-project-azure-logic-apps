@@ -1,7 +1,15 @@
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const Header = () => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
+  
   return (
     <header className="header">
       <div className="logo">
@@ -15,7 +23,7 @@ const Header = () => {
             {user?.role || 'User'}
           </span>
         </div>
-        <button className="btn secondary" style={{ width: 'auto', padding: '8px 16px', fontSize: '0.875rem' }} onClick={logout}>
+        <button className="btn secondary" style={{ width: 'auto', padding: '8px 16px', fontSize: '0.875rem' }} onClick={handleLogout}>
           Logout
         </button>
       </div>

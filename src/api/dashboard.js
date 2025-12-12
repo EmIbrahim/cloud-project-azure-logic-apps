@@ -145,10 +145,12 @@ export const fetchEmployeeDashboard = async (employeeId) => {
       pendingCount: receipts.filter(r => isPending(r)).length,
       approvedCount: receipts.filter(r => isApproved(r)).length,
       rejectedCount: receipts.filter(r => normalizeStatus(r.Status) === 'rejected').length,
-      recentReceipts: receipts.slice(0, 10).sort((a, b) => {
-        const dateA = new Date(a.TransactionDate || 0);
-        const dateB = new Date(b.TransactionDate || 0);
-        return dateB - dateA;
+      // Return all receipts - let the table component handle filtering, sorting, and pagination
+      recentReceipts: receipts.sort((a, b) => {
+        // Sort by ApprovalDate first, then TransactionDate as fallback
+        const dateA = new Date(a.ApprovalDate || a.ApprovedDate || a.TransactionDate || 0);
+        const dateB = new Date(b.ApprovalDate || b.ApprovedDate || b.TransactionDate || 0);
+        return dateB - dateA; // Most recent first
       })
     };
   } catch (error) {

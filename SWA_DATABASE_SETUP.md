@@ -116,3 +116,7 @@ Instead of connection strings, you can use Managed Identity:
    - Azure Portal → Your SWA → Help + support
    - Include error messages from Log stream
 
+
+
+
+

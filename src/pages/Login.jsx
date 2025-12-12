@@ -37,10 +37,10 @@ const Login = () => {
       const authenticated = await login(form.username, form.password);
       const role = authenticated.role?.toLowerCase()?.trim();
       console.log('Login successful - User role:', role);
+      // Always redirect based on role, ignore previous path to prevent wrong dashboard access
       const defaultPath = role === 'cfo' ? '/dashboard' : '/my-dashboard';
-      const next = location.state?.from?.pathname || defaultPath;
-      console.log('Navigating to:', next);
-      navigate(next, { replace: true });
+      console.log('Navigating to:', defaultPath);
+      navigate(defaultPath, { replace: true });
     } catch (err) {
       // Error is surfaced by context error state
     } finally {
