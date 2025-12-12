@@ -64,6 +64,28 @@ const Dashboard = () => {
     return null;
   };
 
+  const CountTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.98)',
+          padding: '12px',
+          borderRadius: '8px',
+          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+          border: '1px solid #e5e7eb'
+        }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: 600, color: '#0f172a' }}>{label}</p>
+          {payload.map((entry, index) => (
+            <p key={index} style={{ margin: '4px 0', color: entry.color, fontSize: '0.875rem' }}>
+              {entry.name}: <strong>{Number(entry.value).toFixed(0)}</strong>
+            </p>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="page" style={{ height: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column' }}>
       <div className="page-header">
@@ -181,8 +203,9 @@ const Dashboard = () => {
                       />
                       <YAxis 
                         tick={{ fontSize: 11, fill: '#64748b' }}
+                        tickFormatter={(value) => value.toString()}
                       />
-                      <Tooltip content={<CustomTooltip />} />
+                      <Tooltip content={<CountTooltip />} />
                       <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                       <Bar dataKey="approved" stackId="status" fill="#10b981" radius={[0, 0, 0, 0]} />
                       <Bar dataKey="pending" stackId="status" fill="#f59e0b" radius={[0, 0, 0, 0]} />

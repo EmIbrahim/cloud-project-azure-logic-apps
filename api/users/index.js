@@ -4,7 +4,7 @@ module.exports = async function (context, req) {
     try {
         await sql.connect(process.env.DATABASE_CONNECTION_STRING);
         
-        const result = await sql.query(`SELECT Id, Username, Name, Role, Email, UserID FROM dbo.Users`);
+        const result = await sql.query(`SELECT UserID, Username, Name, Role, Email FROM dbo.Users`);
         
         context.res = { status: 200, body: { value: result.recordset } };
     } catch (err) {

@@ -56,14 +56,36 @@ export const fetchDashboard = async () => {
       });
     }
 
+    // Create usersById mapping - prioritize UserID since that's the primary key in Users table
     const usersById = Array.isArray(users)
       ? users.reduce((acc, u) => {
-          const key =
-            u.Id ?? u.id ?? u.UserID ?? u.UserId;
-          if (key !== undefined && key !== null) acc[String(key)] = u;
+          // Primary key is UserID in Users table (no Id column exists)
+          const primaryKey = u.UserID !== undefined && u.UserID !== null ? u.UserID : 
+                            u.UserId !== undefined && u.UserId !== null ? u.UserId : null;
+          
+          if (primaryKey !== null) {
+            // Store with both string and number keys for flexibility
+            acc[String(primaryKey)] = u;
+            if (typeof primaryKey === 'number' || !isNaN(Number(primaryKey))) {
+              acc[Number(primaryKey)] = u;
+            }
+          }
+          
           return acc;
         }, {})
       : {};
+
+    // Debug logging
+    console.log('Users mapping:', {
+      usersCount: Array.isArray(users) ? users.length : 0,
+      usersByIdKeys: Object.keys(usersById),
+      sampleUser: Array.isArray(users) && users.length > 0 ? users[0] : null,
+      sampleReceipt: receipts.length > 0 ? {
+        UserID: receipts[0].UserID,
+        UserIDType: typeof receipts[0].UserID,
+        mappedUser: usersById[String(receipts[0].UserID)] || usersById[Number(receipts[0].UserID)]
+      } : null
+    });
 
     const approvedReceipts = receipts.filter(isApproved);
     const pendingReceipts = receipts.filter(isPending);
@@ -288,37 +310,49 @@ const processDailyTrend = (receipts) => {
 };
 
 const resolveEmployeeName = (receipt, usersById) => {
-  const lookupKey =
-    receipt.UserID !== undefined && receipt.UserID !== null
-      ? String(receipt.UserID)
-      : receipt.UserId !== undefined && receipt.UserId !== null
-        ? String(receipt.UserId)
-        : null;
+  // Get UserID from receipt (this is the foreign key to Users.UserID)
+  const receiptUserID = receipt.UserID !== undefined && receipt.UserID !== null 
+    ? receipt.UserID 
+    : receipt.UserId !== undefined && receipt.UserId !== null 
+      ? receipt.UserId 
+      : null;
 
-  const user = lookupKey ? usersById?.[lookupKey] : null;
-
-  // Prefer mapped user data; fall back to receipt-supplied employee name/username.
-  if (user) {
-    return (
-      user.Name ||
-      user.FullName ||
-      user.Username ||
-      user.Email ||
-      lookupKey
-    );
+  if (!receiptUserID) {
+    return receipt.EmployeeName || receipt.Username || receipt.UserName || 'Unknown';
   }
 
+  // Try to find user by UserID - try both string and number keys
+  const user = usersById[String(receiptUserID)] || 
+               usersById[Number(receiptUserID)] ||
+               null;
+
+  // If user found, use their Name from Users table
+  if (user) {
+    const name = user.Name || user.FullName || user.Username || user.Email;
+    const role = user.Role;
+    
+    // Return name with role if role exists and is not CFO
+    if (name) {
+      if (role && role.toLowerCase() !== 'cfo') {
+        return `${name} (${role})`;
+      }
+      return name;
+    }
+  }
+
+  // Fallback to receipt-supplied employee name/username or UserID
   return (
     receipt.EmployeeName ||
     receipt.Username ||
     receipt.UserName ||
-    lookupKey ||
+    String(receiptUserID) ||
     'Unknown'
   );
 };
 
 const processPendingApprovals = (receipts, usersById = {}) => {
   console.log('Processing approval status counts from', receipts.length, 'receipts');
+  console.log('UsersById mapping keys:', Object.keys(usersById));
   const employeeMap = {};
 
   receipts.forEach((r) => {
@@ -327,6 +361,17 @@ const processPendingApprovals = (receipts, usersById = {}) => {
     }
     const employee = resolveEmployeeName(r, usersById);
     const status = normalizeStatus(r.Status);
+    
+    // Debug first few receipts
+    if (Object.keys(employeeMap).length < 3) {
+      console.log('Sample receipt mapping:', {
+        receiptUserID: r.UserID,
+        receiptUserIDType: typeof r.UserID,
+        resolvedName: employee,
+        userFound: !!(usersById[String(r.UserID)] || usersById[Number(r.UserID)])
+      });
+    }
+    
     if (!employeeMap[employee]) {
       employeeMap[employee] = { approved: 0, pending: 0, rejected: 0 };
     }
@@ -348,6 +393,7 @@ const processPendingApprovals = (receipts, usersById = {}) => {
 
 const processEmployeeMonthlySpending = (receipts, usersById = {}) => {
   console.log('Processing employee monthly spending from', receipts.length, 'receipts');
+  console.log('UsersById mapping keys:', Object.keys(usersById));
   const employeeMap = {};
   const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
   let approvedCount = 0;
@@ -364,6 +410,17 @@ const processEmployeeMonthlySpending = (receipts, usersById = {}) => {
         currentMonthCount++;
         const employee = resolveEmployeeName(r, usersById);
         const amount = Number(r.TotalAmount) || 0;
+        
+        // Debug first few receipts
+        if (Object.keys(employeeMap).length < 3) {
+          console.log('Sample receipt mapping (spending):', {
+            receiptUserID: r.UserID,
+            receiptUserIDType: typeof r.UserID,
+            resolvedName: employee,
+            userFound: !!(usersById[String(r.UserID)] || usersById[Number(r.UserID)])
+          });
+        }
+        
         employeeMap[employee] = (employeeMap[employee] || 0) + amount;
       }
     }

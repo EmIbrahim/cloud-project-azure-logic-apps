@@ -25,7 +25,7 @@ module.exports = async function (context, req) {
         
         // Map to expected format
         const userResponse = {
-            id: user.Id || user.UserID || user.id,
+            id: user.UserID || user.UserId,
             username: user.Username || username,
             name: user.Name || user.FullName || username,
             role: (user.Role || 'employee').toLowerCase(),

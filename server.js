@@ -149,7 +149,22 @@ app.get('/api/users', async (req, res) => {
     const pool = await sql.connect(sqlConfig);
     console.log('✓ Connected to SQL Database');
     
-    const result = await pool.request().query(`SELECT Id, Username, Name, Role, Email, UserID FROM dbo.Users`);
+    // Query Users table - use dynamic column detection like receipts endpoint
+    const columnsResult = await pool.request()
+      .query(`
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'Users'
+        ORDER BY ORDINAL_POSITION
+      `);
+    
+    const columns = columnsResult.recordset.map(row => row.COLUMN_NAME);
+    console.log('✓ Users table columns found:', columns);
+    
+    // Build SELECT query with actual column names
+    const selectColumns = columns.join(', ');
+    
+    const result = await pool.request().query(`SELECT ${selectColumns} FROM dbo.Users`);
     
     const users = result.recordset;
     console.log(`✓ Query returned ${users.length} user(s)`);
@@ -259,9 +274,8 @@ app.post('/api/login', async (req, res) => {
     
     console.log('✓ Password verified successfully');
 
-    // Map columns to expected format (handle different naming conventions)
+    // Map columns to expected format (Users table uses UserID, not Id)
     const idCol = columns.find(col => 
-      col.toLowerCase() === 'id' || 
       col.toLowerCase() === 'userid' ||
       col.toLowerCase() === 'user_id'
     );
