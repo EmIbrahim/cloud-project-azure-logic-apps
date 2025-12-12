@@ -101,7 +101,7 @@ const Dashboard = () => {
         </div>
 
         <div className="card">
-          <h3>Pending Approvals</h3>
+          <h3>Approval Status by Employee</h3>
           {dashboard?.pendingApprovals?.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={dashboard.pendingApprovals}>
@@ -110,18 +110,20 @@ const Dashboard = () => {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="count" fill="#f59e0b" name="Pending" />
+                <Bar dataKey="approved" stackId="status" fill="#22c55e" name="Approved" />
+                <Bar dataKey="pending" stackId="status" fill="#f59e0b" name="Pending" />
+                <Bar dataKey="rejected" stackId="status" fill="#ef4444" name="Rejected" />
               </BarChart>
             </ResponsiveContainer>
           ) : (
             <div style={{ padding: '48px', textAlign: 'center', color: '#64748b' }}>
-              No pending approvals
+              No approval data
             </div>
           )}
         </div>
 
         <div className="card">
-          <h3>Employee Monthly Spending vs Salary</h3>
+          <h3>Employee Monthly Spending</h3>
           {dashboard?.employeeMonthlySpending?.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={dashboard.employeeMonthlySpending}>
@@ -130,8 +132,7 @@ const Dashboard = () => {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="spend" fill="#22c55e" name="Spend" />
-                <Bar dataKey="salary" fill="#94a3b8" name="Salary" />
+                <Bar dataKey="spend" fill="#22c55e" name="Approved Spend" />
               </BarChart>
             </ResponsiveContainer>
           ) : (

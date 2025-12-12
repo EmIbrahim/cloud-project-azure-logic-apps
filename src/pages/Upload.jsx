@@ -17,7 +17,7 @@ const Upload = () => {
 
   const handleFileSelect = async (file) => {
     if (!file) return;
-    
+
     setLocalError('');
     setSuccess(false);
     setExtractedData(null);
@@ -27,7 +27,7 @@ const Upload = () => {
 
     try {
       // Step 1: Analyze receipt using Logic App
-      const result = await analyzeReceipt(file);
+      const result = await analyzeReceipt(file, user);
       setExtractedData(result.extractedData);
       setAnalysisResult(result);
     } catch (err) {
@@ -47,9 +47,9 @@ const Upload = () => {
     try {
       // Step 2: Upload to blob storage for final processing
       // This will trigger the Logic App blob trigger
-      await uploadReceipt(selectedFile, analysisResult.blobName);
+      await uploadReceipt(selectedFile, user);
       setSuccess(true);
-      
+
       // Reset after success
       setTimeout(() => {
         if (fileInputRef.current) {
@@ -142,7 +142,7 @@ const Upload = () => {
       {!extractedData && !success && (
         <div className="card">
           <h2>Select Receipt</h2>
-          
+
           <div
             className={`upload-area ${analyzing ? 'dragover' : ''}`}
             onDrop={handleDrop}
@@ -193,7 +193,7 @@ const Upload = () => {
           <p style={{ marginBottom: '20px', color: '#64748b', fontSize: '0.875rem' }}>
             Please review the extracted information before sending to CFO for approval.
           </p>
-          
+
           <table className="review-table">
             <thead>
               <tr>

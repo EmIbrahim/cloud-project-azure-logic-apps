@@ -1,0 +1,8 @@
+{
+  "name": "receipt-api",
+  "version": "1.0.0",
+  "dependencies": {
+    "mssql": "^11.0.1"
+  }
+}
+

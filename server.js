@@ -141,8 +141,29 @@ app.get('/api/receipts', async (req, res) => {
   }
 });
 
+// Users endpoint - queries Users table directly
+app.get('/api/users', async (req, res) => {
+  console.log('\n=== FETCHING USERS ===');
+  
+  try {
+    const pool = await sql.connect(sqlConfig);
+    console.log('✓ Connected to SQL Database');
+    
+    const result = await pool.request().query(`SELECT Id, Username, Name, Role, Email, UserID FROM dbo.Users`);
+    
+    const users = result.recordset;
+    console.log(`✓ Query returned ${users.length} user(s)`);
+    console.log('=== END FETCH USERS ===\n');
+    
+    res.json({ value: users });
+  } catch (error) {
+    console.error('\n✗ SQL Error fetching users:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Login endpoint - queries Users table directly
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
 
   console.log('\n=== LOGIN ATTEMPT ===');
