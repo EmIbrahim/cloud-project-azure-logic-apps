@@ -3,6 +3,7 @@ import Login from './pages/Login';
 import Upload from './pages/Upload';
 import Dashboard from './pages/Dashboard';
 import EmployeeDashboard from './pages/EmployeeDashboard';
+import CFOReceiptsView from './pages/CFOReceiptsView';
 import { useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Header from './components/Layout/Header';
@@ -42,6 +43,14 @@ const App = () => {
               element={
                 <ProtectedRoute roles={['cfo']}>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/receipts"
+              element={
+                <ProtectedRoute roles={['cfo']}>
+                  <CFOReceiptsView />
                 </ProtectedRoute>
               }
             />

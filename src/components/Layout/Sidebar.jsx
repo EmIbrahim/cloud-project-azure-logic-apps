@@ -9,15 +9,15 @@ const Sidebar = () => {
     <aside className="sidebar">
       {/* Urdu App Name */}
       <div style={{
-        marginBottom: '24px',
+        marginBottom: '20px',
         paddingBottom: '20px',
         borderBottom: '2px solid #e5e7eb',
         textAlign: 'center'
       }}>
         <div style={{
           fontFamily: '"Aldhabi", "Al Qalam Taj Nastaleeq", "Noto Nastaliq Urdu", "Nafees Web Naskh", "Jameel Noori Nastaleeq", "Urdu Typesetting", serif',
-          fontSize: '7.5rem',
-          fontWeight: '600',
+          fontSize: '5.5rem',
+          fontWeight: '800',
           background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
@@ -39,7 +39,12 @@ const Sidebar = () => {
           <NavLink to="/upload">Upload Receipt</NavLink>
         </>
       )}
-      {user.role === 'cfo' && <NavLink to="/dashboard">CFO Dashboard</NavLink>}
+      {user.role === 'cfo' && (
+        <>
+          <NavLink to="/dashboard">CFO Dashboard</NavLink>
+          <NavLink to="/receipts">All Receipts</NavLink>
+        </>
+      )}
     </aside>
   );
 };
