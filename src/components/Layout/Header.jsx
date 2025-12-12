@@ -16,6 +16,7 @@ const Header = () => {
         <span style={{ fontWeight: '700' }}>Receipt</span>
         <span style={{ fontWeight: '400', color: '#64748b' }}>Automation</span>
       </div>
+      
       <div className="user-meta">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
           <span style={{ fontWeight: '500', color: '#0f172a' }}>{user?.name}</span>

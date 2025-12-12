@@ -85,6 +85,7 @@ header.header {
   top: 0;
   z-index: 100;
   box-shadow: var(--shadow-sm);
+  position: relative;
 }
 
 .logo {
